@@ -22,9 +22,11 @@ export default defineComponent({
     const searchTerm = ref('');
 
     const filteredUsers = computed(() => {
-      return props.users.filter(user =>
+      const result = props.users.filter(user =>
           user.toLowerCase().includes(searchTerm.value.toLowerCase())
       );
+      console.log('Filtered users:', result);
+      return result;
     });
 
     const selectUser = (user: string) => {

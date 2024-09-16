@@ -45,12 +45,15 @@ export default defineComponent({
     });
 
     const setUser = (user: string) => {
+      console.log('User selected:', user);
       currentUser.value = user;
     };
 
     const setChatUser = (chatUser: string) => {
+      console.log('Chat user selected:', chatUser);
       selectedChatUser.value = chatUser;
     };
+
 
     return {
       users,

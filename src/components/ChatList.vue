@@ -32,10 +32,13 @@ export default defineComponent({
   setup(props, { emit }) {
     const searchQuery = ref('');
 
+
     const filteredChatUsers = computed(() => {
-      return props.chatUsers.filter(user =>
+      const result = props.chatUsers.filter(user =>
           user.toLowerCase().includes(searchQuery.value.toLowerCase())
       );
+      console.log('Filtered chat users:', result);
+      return result;
     });
 
     const selectChat = (chatUser: string) => {

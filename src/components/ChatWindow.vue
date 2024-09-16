@@ -36,6 +36,7 @@
 
 <script lang="ts">
 import { ref, onMounted, onBeforeUnmount, defineComponent, watch, nextTick } from 'vue';
+import { Client, Room } from 'colyseus.js';
 
 interface Message {
   text: string;
@@ -58,9 +59,25 @@ export default defineComponent({
     const messages = ref<Record<string, Message[]>>({});
     const newMessage = ref('');
     const editedMessage = ref('');
+    let room: Room | null = null;
     const messageInput = ref<HTMLTextAreaElement | null>(null);
-    let socket: WebSocket | null = null;
 
+    const client = new Client('ws://localhost:2567');
+
+    // Load chat messages from localStorage
+    const loadMessagesFromStorage = () => {
+      const savedMessages = localStorage.getItem('chatMessages');
+      if (savedMessages) {
+        messages.value = JSON.parse(savedMessages);
+      }
+    };
+
+    // Save chat messages to localStorage
+    const saveMessagesToStorage = () => {
+      localStorage.setItem('chatMessages', JSON.stringify(messages.value));
+    };
+
+    // Create or load messages for each chat
     const getChatMessages = () => {
       if (!messages.value[props.chatUser]) {
         messages.value[props.chatUser] = [];
@@ -68,30 +85,22 @@ export default defineComponent({
       return messages.value[props.chatUser];
     };
 
-    const connectToWebSocket = () => {
-      socket = new WebSocket('ws://localhost:2567');
-
-      socket.onopen = () => {
-        console.log('WebSocket connection opened');
-        socket.send(JSON.stringify({ type: 'join', chatUser: props.chatUser }));
-      };
-
-      socket.onmessage = (event) => {
-        const message: Message = JSON.parse(event.data);
-        if (message && (message.author === props.currentUser || message.author === props.chatUser)) {
-          const chatMessages = getChatMessages();
-          chatMessages.push(message);
-          messages.value = { ...messages.value, [props.chatUser]: chatMessages };
+    const joinRoom = async (chatUser: string) => {
+      if (room) {
+        await room.leave();
+      }
+      room = await client.joinOrCreate('chat');
+      room.onMessage('message', (message: Message) => {
+        if (message.author === props.currentUser || message.author === chatUser) {
+          getChatMessages().push(message);
+          saveMessagesToStorage(); // Save messages whenever new ones are received
         }
-      };
-
-      socket.onclose = () => {
-        console.log('WebSocket connection closed');
-      };
+      });
     };
 
     onMounted(() => {
-      connectToWebSocket();
+      loadMessagesFromStorage(); // Load messages from localStorage on mount
+      joinRoom(props.chatUser);
       nextTick(() => {
         if (messageInput.value) {
           autoResize();
@@ -100,26 +109,24 @@ export default defineComponent({
     });
 
     watch(() => props.chatUser, (newChatUser) => {
-      if (socket) {
-        socket.send(JSON.stringify({ type: 'leave', chatUser: props.chatUser }));
-        socket.send(JSON.stringify({ type: 'join', chatUser: newChatUser }));
-      }
+      joinRoom(newChatUser);
     });
 
     const sendMessage = () => {
-      if (newMessage.value.trim() !== '' && socket) {
+      if (newMessage.value.trim() !== '' && room) {
         const message = {
           text: newMessage.value,
           author: props.currentUser,
         };
-        socket.send(JSON.stringify({ type: 'message', message }));
-        newMessage.value = ''; // Очистка поля ввода
+        room.send('message', message);
+        newMessage.value = '';  // Очистка поля ввода
         autoResize();
       }
     };
 
     const deleteMessage = (index: number) => {
       getChatMessages().splice(index, 1);
+      saveMessagesToStorage(); // Save messages after deletion
     };
 
     const editMessage = (message: Message) => {
@@ -130,9 +137,7 @@ export default defineComponent({
     const confirmEditMessage = (message: Message) => {
       message.text = editedMessage.value;
       message.isEditing = false;
-      if (socket) {
-        socket.send(JSON.stringify({ type: 'edit', message }));
-      }
+      saveMessagesToStorage(); // Save messages after editing
     };
 
     const autoResize = () => {
@@ -143,8 +148,8 @@ export default defineComponent({
     };
 
     onBeforeUnmount(() => {
-      if (socket) {
-        socket.close();
+      if (room) {
+        room.leave();
       }
     });
 
@@ -162,7 +167,6 @@ export default defineComponent({
   },
 });
 </script>
-
 
 <style scoped>
 .chat-window {
