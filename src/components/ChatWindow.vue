@@ -5,23 +5,33 @@
           v-for="(message, index) in getChatMessages()"
           :key="index"
           :class="['message', message.author === currentUser ? 'sent' : 'received']"
+          @click="setActiveMessage(index)"
       >
-        <span v-if="message.isEditing">
+        <div v-if="activeMessageIndex === index && message.isEditing" class="edit-container">
           <input
               v-model="editedMessage"
               @keydown.enter="confirmEditMessage(message)"
               placeholder="Edit your message..."
+              class="edit-input"
           />
-        </span>
-        <span v-else>
-          {{ message.text }}
-          <button v-if="message.author === currentUser" @click="editMessage(message)">
-            Edit
-          </button>
-          <button v-if="message.author === currentUser" @click="deleteMessage(index)">
-            Delete
-          </button>
-        </span>
+        </div>
+        <div v-else class="message-content">
+          <div class="avatar">
+            <img :src="getAvatarUrl(message.author)" alt="Avatar" />
+          </div>
+          <div class="message-text-container">
+            <span class="message-text">{{ message.text }}</span>
+            <span class="message-time">{{ formatTime(message.timestamp) }}</span>
+            <div v-if="activeMessageIndex === index" class="message-actions">
+              <button v-if="message.author === currentUser" @click.stop="editMessage(message)" class="action-btn">
+                Edit
+              </button>
+              <button v-if="message.author === currentUser" @click.stop="deleteMessage(index)" class="action-btn">
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
     <textarea
@@ -30,6 +40,7 @@
         @input="autoResize"
         placeholder="Type your message..."
         ref="messageInput"
+        class="message-input"
     ></textarea>
   </div>
 </template>
@@ -42,6 +53,7 @@ interface Message {
   text: string;
   author: string;
   isEditing?: boolean;
+  timestamp: number;
 }
 
 export default defineComponent({
@@ -59,12 +71,12 @@ export default defineComponent({
     const messages = ref<Record<string, Message[]>>({});
     const newMessage = ref('');
     const editedMessage = ref('');
+    const activeMessageIndex = ref<number | null>(null);
     let room: Room | null = null;
     const messageInput = ref<HTMLTextAreaElement | null>(null);
 
     const client = new Client('ws://localhost:2567');
 
-    // Load chat messages from localStorage
     const loadMessagesFromStorage = () => {
       const savedMessages = localStorage.getItem('chatMessages');
       if (savedMessages) {
@@ -72,12 +84,10 @@ export default defineComponent({
       }
     };
 
-    // Save chat messages to localStorage
     const saveMessagesToStorage = () => {
       localStorage.setItem('chatMessages', JSON.stringify(messages.value));
     };
 
-    // Create or load messages for each chat
     const getChatMessages = () => {
       if (!messages.value[props.chatUser]) {
         messages.value[props.chatUser] = [];
@@ -93,13 +103,13 @@ export default defineComponent({
       room.onMessage('message', (message: Message) => {
         if (message.author === props.currentUser || message.author === chatUser) {
           getChatMessages().push(message);
-          saveMessagesToStorage(); // Save messages whenever new ones are received
+          saveMessagesToStorage();
         }
       });
     };
 
     onMounted(() => {
-      loadMessagesFromStorage(); // Load messages from localStorage on mount
+      loadMessagesFromStorage();
       joinRoom(props.chatUser);
       nextTick(() => {
         if (messageInput.value) {
@@ -117,16 +127,18 @@ export default defineComponent({
         const message = {
           text: newMessage.value,
           author: props.currentUser,
+          timestamp: Date.now(),
         };
         room.send('message', message);
-        newMessage.value = '';  // Очистка поля ввода
+        newMessage.value = '';
         autoResize();
       }
     };
 
     const deleteMessage = (index: number) => {
       getChatMessages().splice(index, 1);
-      saveMessagesToStorage(); // Save messages after deletion
+      saveMessagesToStorage();
+      activeMessageIndex.value = null;
     };
 
     const editMessage = (message: Message) => {
@@ -137,7 +149,8 @@ export default defineComponent({
     const confirmEditMessage = (message: Message) => {
       message.text = editedMessage.value;
       message.isEditing = false;
-      saveMessagesToStorage(); // Save messages after editing
+      saveMessagesToStorage();
+      activeMessageIndex.value = null;
     };
 
     const autoResize = () => {
@@ -145,6 +158,19 @@ export default defineComponent({
         messageInput.value.style.height = 'auto';
         messageInput.value.style.height = `${messageInput.value.scrollHeight}px`;
       }
+    };
+
+    const formatTime = (timestamp: number) => {
+      const date = new Date(timestamp);
+      return `${date.getHours()}:${date.getMinutes()}`;
+    };
+
+    const getAvatarUrl = (username: string) => {
+      return `https://i.pravatar.cc/150?img=${username}`;
+    };
+
+    const setActiveMessage = (index: number) => {
+      activeMessageIndex.value = activeMessageIndex.value === index ? null : index;
     };
 
     onBeforeUnmount(() => {
@@ -163,11 +189,14 @@ export default defineComponent({
       autoResize,
       messageInput,
       editedMessage,
+      formatTime,
+      getAvatarUrl,
+      setActiveMessage,
+      activeMessageIndex,
     };
   },
 });
 </script>
-
 <style scoped>
 .chat-window {
   display: flex;
@@ -175,6 +204,7 @@ export default defineComponent({
   width: 100%;
   height: 100vh;
   background-color: #ffffff;
+  border-radius: 8px;
 }
 
 .messages {
@@ -182,16 +212,20 @@ export default defineComponent({
   overflow-y: auto;
   padding: 20px;
   background-color: #f5f7fa;
-  border-bottom: 1px solid #dfe3e8;
+  border-bottom: 1px solid #ddd;
 }
 
 .message {
-  padding: 10px 15px;
+  display: flex;
+  align-items: flex-start;
+  padding: 12px 18px;
   margin: 8px 0;
-  border-radius: 8px;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  border-radius: 12px;
   box-shadow: 0 1px 5px rgba(0, 0, 0, 0.1);
-  max-width: 60%;
+  position: relative;
+  max-width: 70%; /* Reduced width */
+  width: fit-content;
+  animation: fadeIn 0.3s ease-out;
 }
 
 .sent {
@@ -208,12 +242,80 @@ export default defineComponent({
   border-top-left-radius: 0;
 }
 
-textarea {
+.message-content {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.avatar {
+  margin-right: 12px;
+}
+
+.avatar img {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.message-text-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.message-text {
+  font-size: 16px;
+  line-height: 1.4;
+  word-wrap: break-word; /* Ensure long words break */
+}
+
+.message-time {
+  font-size: 12px;
+  color: #888;
+  margin-top: 4px;
+}
+
+.message-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 5px;
+}
+
+.action-btn {
+  background: none;
+  border: none;
+  color: #007bff;
+  cursor: pointer;
+  margin-left: 8px;
+  font-size: 14px;
+}
+
+.action-btn:hover {
+  text-decoration: underline;
+}
+
+.edit-container {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.edit-input {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #dfe3e8;
+  border-radius: 8px;
+  font-size: 16px;
+  outline: none;
+}
+
+.message-input {
   border: none;
   padding: 15px;
   margin: 10px;
   border-top: 1px solid #dfe3e8;
-  border-radius: 5px;
+  border-radius: 8px;
   outline: none;
   font-size: 16px;
   resize: none;
@@ -224,15 +326,12 @@ textarea {
   width: calc(100% - 30px);
 }
 
-button {
-  margin-left: 10px;
-  background-color: transparent;
-  border: none;
-  color: #007bff;
-  cursor: pointer;
-}
-
-button:hover {
-  text-decoration: underline;
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 </style>
